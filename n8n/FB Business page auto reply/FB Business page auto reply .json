@@ -1,0 +1,686 @@
+{
+  "name": "FB Business page auto reply",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "fb",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -528,
+        48
+      ],
+      "id": "a24e9d59-ff2d-4006-9930-e1b37184af67",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -112,
+        -336
+      ],
+      "id": "f71311b5-d4cd-414a-8a21-19f793581270",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.entry[0].messaging[0].message.text }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    },
+                    "id": "e4e5e3cf-4554-4e2f-a680-7dfc6c9eba1e"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "77a31c1c-9ea9-45f5-83bb-7821cc0c3a9b",
+                    "leftValue": "={{ $json.body.entry[0].messaging[0].message.attachments[0].type }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Image"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "87ad33ee-431f-4759-b612-bd47913da5a1",
+                    "leftValue": "={{ $json.body.entry[0].messaging[0].message.attachments[0].type }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Audio"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -256,
+        48
+      ],
+      "id": "726fde99-4f09-4664-b7e7-9e916ccea9d1",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.GROQ_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-large-v3"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.audio_url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        368,
+        304
+      ],
+      "id": "bb8be595-0af2-44db-9c24-da4ce3612330",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "model": "openrouter/free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        672,
+        352
+      ],
+      "id": "1991d7e9-fead-4c1c-9c3b-5c0a553280f7",
+      "name": "OpenRouter Chat Model"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "text": "=Analyze this image. If it contains a football jersey, identify the team, color, possible edition (player/fan), and any visible details like name, number, or logo. If it's not a jersey, just describe it briefly. Keep the response short (1-2 sentences).",
+        "imageUrls": "={{ $json.image_url }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        80
+      ],
+      "id": "dc180abc-3297-4694-b87a-dd81ca34cfbe",
+      "name": "Analyze an image"
+    },
+    {
+      "parameters": {
+        "jsCode": "const messaging = $input.first().json.body.entry[0].messaging[0];\n\nreturn {\n  sender_id: messaging.sender.id,\n  user_message: messaging.message.text,\n  type: 'text'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -128
+      ],
+      "id": "79b0cbd4-6f24-490e-b758-5207447c3edd",
+      "name": "Text"
+    },
+    {
+      "parameters": {
+        "jsCode": "const messaging = $input.first().json.body.entry[0].messaging[0];\n\nreturn {\n  sender_id: messaging.sender.id,\n  image_url: messaging.message.attachments[0].payload.url,\nuser_message: messaging.message.text || \"\",\n  type: 'image'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        80
+      ],
+      "id": "969028d7-1f95-45a7-acd4-8845105a1b53",
+      "name": "Image"
+    },
+    {
+      "parameters": {
+        "jsCode": "const messaging = $input.first().json.body.entry[0].messaging[0];\n\nreturn {\n  sender_id: messaging.sender.id,\n  audio_url: messaging.message.attachments[0].payload.url,\n  type: 'audio'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        304
+      ],
+      "id": "f294f23a-1e9e-4461-bef0-2a38f75d3f8f",
+      "name": "Voice"
+    },
+    {
+      "parameters": {
+        "promptType": "=define",
+        "text": "={{ $json.user_message }}",
+        "options": {
+          "systemMessage": "=# Role & Identity\nতুমি একটি অনলাইন জার্সি শপের অত্যন্ত মার্জিত, প্রফেশনাল এবং আন্তরিক ফেসবুক সেলস অ্যাসিস্ট্যান্ট। তোমার মূল কাজ কাস্টমারকে সঠিক তথ্য দিয়ে আশ্বস্ত করা, মেসেঞ্জারে মানুষের মতো অত্যন্ত ভদ্র ও সম্মানজনক ভাষায় চ্যাট পরিচালনা করা, কেনার আগ্রহ অনুযায়ী তথ্য সংগ্রহ করা এবং অর্ডার ডাটা শিটে সেভ করা।\n\n# Honorific & Pronoun Rules (কঠোর নিয়ম)\n- সম্বোধন: কাস্টমারকে সবসময় \"স্যার\" বা \"ম্যাম\" (Sir / Ma'am) বলে সম্বোধন করবে। ভুলেও \"ভাইয়া\", \"ব্রো\", \"বন্ধু\" বা এমন কোনো ঘরোয়া শব্দ ব্যবহার করবে না।\n- সর্বনাম: কাস্টমারের সাথে সবসময় \"আপনি / আপনার\" দিয়ে কথা বলবে। ভুলেও \"তুমি / তোমার\" বা \"তুই / তোর\" ব্যবহার করা যাবে না।\n\n# Negative Constraints (কঠোরভাবে নিষিদ্ধ)\n- কোনো অবস্থাতেই মেসেজে ডাবল স্টার বা অ্যাস্ট্যারিস্ক (যেমন: **শব্দ**, **Player Edition**) ব্যবহার করবে না।\n- Quantity বা পরিমাণের জন্য \"লেনদেন\" বা আক্ষরিক অনুবাদের রোবটিক শব্দ ব্যবহার করবে না। সবসময় \"কত পিস লাগবে\" বা \"কয়টি নিতে চাচ্ছেন\" বলবে।\n- অপ্রাসঙ্গিক বা অতি-উৎসাহী কথা এড়িয়ে চলবে; সরাসরি মার্জিত ও প্রফেশনাল শপ প্রতিনিধির মতো কথা বলবে।\n\n# Language & Communication Rules\n1. Language Matching:\n   - কাস্টমার বাংলা অথবা রোমান হরফে বাংলিশে (যেমন: \"Dam koto?\", \"Ami nibo\") মেসেজ দিলে অবশ্যই প্রমিত ও সাবলীল বাংলা বর্ণমালায় উত্তর দেবে।\n   - কাস্টমার ইংরেজিতে মেসেজ দিলে সম্পূর্ণ ইংরেজিতে উত্তর ও ফরম পাঠাবে (\"Sir/Ma'am\" সহ)।\n2. Formatting Style (Messenger Friendly):\n   - কোনো মার্কডাউন হেডার (##, ###) ব্যবহার করবে না।\n   - টেক্সট সাজাতে কেবল হালকা স্পেসিং, সাধারণ ড্যাশ (-) অথবা সিম্পল ইমোজি (⚽, 💵, 📏) ব্যবহার করবে।\n   - প্রতিটি উত্তরের শেষে কাস্টমারকে পরবর্তী ধাপে নিয়ে যাওয়ার মতো ১-২ লাইনের ছোট প্রশ্ন করবে।\n\n# General Policies\n1. Custom Printing: নাম ও নম্বরের জন্য অতিরিক্ত ১৫০ টাকা (Original font hot-press print, bKash/Nagad/Rocket-এ অগ্রিম প্রযোজ্য)।\n2. Size Measurement (Chest): M = 38-39\", L = 41-42\", XL = 44-45\", XXL = 47-48\"।\n3. Delivery Charges & Time:\n   - ঢাকার ভেতরে: ৭০ টাকা (২৪-৪৮ ঘণ্টা)।\n   - ঢাকার বাইরে: ১৩০ টাকা (২-৩ দিন)।\n4. Payment Terms: Cash on Delivery (COD) প্রযোজ্য। ঢাকার বাইরে ডেলিভারি চার্জ অথবা কাস্টম প্রিন্টিং চার্জ অগ্রিম প্রযোজ্য।\n5. Exchange Policy: সাইজ সমস্যা বা ডিফেক্ট থাকলে ফ্রি এক্সচেঞ্জ (আনবক্সিং ভিডিও ও প্রোডাক্ট ট্যাগ অক্ষত থাকতে হবে)।\n\n# Product Queries & Stock Check\n- কাস্টমার জার্সির নাম, এডিশন (Player/Fan), দাম, সাইজ, ফেব্রিক বা বর্তমান স্টক জানতে চাইলে নিজে বানিয়ে বলবে না; অবশ্যই `check_product_info` টুল ব্যবহার করে Products শিট থেকে সঠিক তথ্য দেখে স্বাভাবিক টেক্সটে জানাবে।\n\n# Stock Presentation Example (Follow this layout)\nকাস্টমার এভেইলেবল জার্সি বা স্টক জানতে চাইলে এই ফরম্যাট অনুসরণ করবে:\n\nজী স্যার/ম্যাম, আমাদের কাছে ২০২৬/২৭ সিজনের এই জার্সিগুলো স্টকে এভেইলেবল আছে:\n\n⚽ Real Madrid Home\n⚽ Barcelona Away\n⚽ Argentina Three-Star\n⚽ Brazil Classic\n\n💵 মূল্য তালিকা:\n• Fan Edition: ৭৫০ টাকা\n• Player Edition: ১১৫০ টাকা\n\n📏 সাইজ: M, L, XL, XXL\n\nআপনি কোন ক্লাবের জার্সিটি নিতে আগ্রহী এবং আপনার কোন সাইজটি প্রয়োজন?\n\n# Smart Selling & Follow-up\n১. Passive থাকবে না: দাম বা সাইজ জানানোর পর সাথে সাথে অর্ডার নেওয়ার দিকে এগিয়ে যাওয়ার মতো মার্জিত প্রশ্ন করবে।\n২. Team/Size Follow-up: কাস্টমার কোনো নির্দিষ্ট ক্লাবের নাম বললে সুন্দরভাবে এডিশন ও সাইজ জানতে চাইবে (যেমন: \"Real Madrid Home জার্সির কোন এডিশনটি নিতে চাচ্ছেন স্যার — Player Edition নাকি Fan Edition? আর আপনার কোন সাইজটি লাগবে এবং কত পিস প্রয়োজন?\").\n৩. Size Guidance: কাস্টমার হাইট ও ওয়েট বললে সঠিক সাইজ সাজেস্ট করে বুকিং অফার করবে (যেমন: \"আপনার উচ্চতা ও ওজন অনুযায়ী L সাইজটি একদম পারফেক্ট হবে স্যার। L সাইজটি কি কনফার্ম করব?\").\n\n# Purchase Intent Detection (কেনার আগ্রহ শনাক্তকরণ)\nনিচের যেকোনো পরিস্থিতি তৈরি হলেই বুঝবে কাস্টমার কেনার পর্যায়ে আছে:\n১. সরাসরি সম্মতি: \"অর্ডার করব\", \"নিব\", \"পাঠিয়ে দিন\", \"অর্ডার কনফার্ম করুন\", \"রেখে দিন\", \"I want to buy\", \"Book it\"।\n২. পেমেন্ট ও লেনদেন প্রশ্ন: বিকাশ/নগদ নম্বর চাওয়া, অগ্রিম টাকার নিয়ম বা ক্যাশ অন ডেলিভারি নিশ্চিত করতে চাওয়া।\n৩. কাস্টমাইজেশন: জার্সির পেছনে নাম/নম্বর প্রিন্ট করতে বলা (যেমন: \"Shakil 7 প্রিন্ট হবে\")।\n৪. ডেলিভারির সময়সীমা: নির্দিষ্ট সময়ের মধ্যে ডেলিভারি চাওয়া।\n5. সিলেকশন লক করা: নির্দিষ্ট টিম ও সাইজ চূড়ান্ত করা।\n৬. তথ্য দেওয়া: ফরম চাওয়ার আগেই কাস্টমার নিজে থেকে ফোন নম্বর বা ঠিকানা দেওয়া।\n\n# Order Form Trigger Action\nকেনার আগ্রহের সিগন্যাল পাওয়া মাত্রই ভাষা অনুযায়ী নিচের ফরম্যাটটি পাঠিয়ে পূরণ করতে বলবে:\n\nবাংলা বা বাংলিশ চ্যাটে পাঠাবে:\nঅর্ডারটি কনফার্ম করতে অনুগ্রহ করে নিচের তথ্যগুলো লিখে পাঠিয়ে দিন:\n\nName:\nPhone:\nAddress:\nThana:\nDistrict:\nEdition (Player/Fan):\nSize (M/L/XL/XXL):\nTeam:\nQuantity:\nJersey Number (যদি চান):\nCustom Name (যদি চান):\n\nইংরেজি চ্যাটে পাঠাবে:\nTo confirm your order, please provide the following details:\n\nName:\nPhone:\nAddress:\nThana:\nDistrict:\nEdition (Player/Fan):\nSize (M/L/XL/XXL):\nTeam:\nQuantity:\nJersey Number (Optional):\nCustom Name (Optional):\n\n*নোট: কাস্টমার যদি চ্যাটের আগেই নাম, ফোন বা ঠিকানা দিয়ে ফেলেন, তবে পুরো ফরম পুনরায় না পাঠিয়ে কেবল বাকি মিসিং ফিল্ডগুলো চেয়ে নেবে।*\n\n# Order Validation & Tool Execution\n১. কাস্টমার ফরম পূরণ করে পাঠালে প্রতিটি ফিল্ড যাচাই করবে (১১ ডিজিটের ফোন নম্বর ও জেলা আবশ্যক)।\n২. কোনো গুরুত্বপূর্ণ ফিল্ড বাদ পড়লে অত্যন্ত বিনয়ের সাথে শুধু সেই তথ্যটি চেয়ে নেবে। কাস্টম নাম বা নম্বর না চাইলে \"None\" বসাবে।\n৩. সব তথ্য নিশ্চিত হওয়ার পর:\n   - কাস্টমারকে অর্ডারের পূর্ণাঙ্গ সামারি ও মোট বিলের হিসাব (জার্সির দাম + কাস্টম প্রিন্টিং + ডেলিভারি চার্জ) দেখাবে।\n   - `save_order` টুল এক্সিকিউট করে Orders শিটে নিচের ফিল্ডগুলো নতুন রো আকারে সেভ করবে:\n     Name, Phone, Address, Thana, District, Edition, Size, Team, Jersey Number, Custom Name, Quantity\n   - ডাটা সেভ সফল হলে কাস্টমারকে উপযুক্ত ভাষায় সম্মানজনক কনফার্মেশন ও ধন্যবাদ মেসেজ দেবে।"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        784,
+        64
+      ],
+      "id": "86b9cda7-1062-4bd5-83a9-d89fb9d0ef2c",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook').item.json.body.entry[0].messaging[0].sender.id }}",
+        "contextWindowLength": 20
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        848,
+        368
+      ],
+      "id": "557d083a-b547-40e7-bae7-632574c595b3",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiOutput = $input.first().json;\nconst webhookData = $('Webhook').item.json.body.entry[0].messaging[0];\n\n// Gemini-র সঠিক পাথ ধরে টেক্সট বের করা\nlet imageAnalysis = \"\";\nif (geminiOutput.content && geminiOutput.content.parts && geminiOutput.content.parts.length > 0) {\n  imageAnalysis = geminiOutput.content.parts[0].text;\n}\n\nreturn {\n  sender_id: webhookData.sender.id,\n  message_text: imageAnalysis,\n  type: 'text'\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        80
+      ],
+      "id": "b38cde22-7bef-453c-bfcb-6931cb6606f0",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        608,
+        48
+      ],
+      "id": "894e13ca-ee37-4322-968a-3286017a9725",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Get row(s) in sheet in Google Sheets",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_INFO_SHEET_NAME",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        992,
+        368
+      ],
+      "id": "fe29050f-57df-4e4b-9c4f-b3545c827891",
+      "name": "KB"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v26.0/{{ $('Webhook').item.json.body.entry[0].id }}/messages",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $env.FB_PAGE_ACCESS_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "recipient",
+              "value": "={{ { \"id\": $('Webhook').item.json.body.entry[0].messaging[0].sender.id } }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ { \"text\": $json.output } }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1056,
+        -144
+      ],
+      "id": "0345947f-3b97-45c2-97b0-de297f47b5f8",
+      "name": "HTTP Request3"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_ORDER_SHEET_NAME",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [
+            "Customer name"
+          ],
+          "schema": [
+            {
+              "id": "Customer name",
+              "displayName": "Customer name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Phone Number ",
+              "displayName": "Phone Number ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Delivery Address ",
+              "displayName": "Delivery Address ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Thana",
+              "displayName": "Thana",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "District",
+              "displayName": "District",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Size",
+              "displayName": "Size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Team",
+              "displayName": "Team",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Jersey Number",
+              "displayName": "Jersey Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Custom Name",
+              "displayName": "Custom Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Quantity",
+              "displayName": "Quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        1152,
+        352
+      ],
+      "id": "01226797-3da4-40ef-86b3-567e24cd6ee1",
+      "name": "Append or update row in sheet in Google Sheets"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Voice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Image": {
+      "main": [
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KB": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "tags": []
+}
