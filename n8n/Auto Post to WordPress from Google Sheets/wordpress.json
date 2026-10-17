@@ -1,0 +1,437 @@
+{
+  "name": "Auto Post to WordPress from Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "readAllRows",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "options": {
+          "returnFirstRowAsHeaders": true
+        }
+      },
+      "id": "2",
+      "name": "Read Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json['Status'] }}",
+              "rightValue": "Done",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "3",
+      "name": "Filter - Skip Done Rows",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "4",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json['Publishing site'] }}/wp-json/wp/v2/posts?per_page=20&status=publish&_fields=id,title,link,slug",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "5",
+      "name": "Fetch Existing WP Posts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine current row data with fetched WP posts for AI processing\nconst currentRow = $('Split In Batches').item.json;\nconst wpPosts = $input.all().map(item => item.json);\n\n// Build internal links list from existing posts\nconst internalLinks = wpPosts.map(post => ({\n  title: post.title?.rendered || post.title,\n  url: post.link,\n  slug: post.slug\n}));\n\nreturn [{\n  json: {\n    title: currentRow['Title'],\n    keyword: currentRow['Keyword'],\n    targetLink: currentRow['Link to place over this kw'],\n    publishingSite: currentRow['Publishing site'],\n    rowIndex: currentRow['row_number'] || currentRow['_rowNumber'],\n    internalLinksJson: JSON.stringify(internalLinks),\n    internalLinksCount: internalLinks.length\n  }\n}];"
+      },
+      "id": "6",
+      "name": "Prepare AI Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.publishingSite }}/wp-json/wp/v2/categories?per_page=50&_fields=id,name,slug",
+        "options": {}
+      },
+      "id": "7",
+      "name": "Fetch WP Categories",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge category data with previous data\nconst prevData = $('Prepare AI Input').item.json;\nconst categories = $input.all().map(item => item.json);\n\nconst categoriesJson = JSON.stringify(\n  categories.map(c => ({ id: c.id, name: c.name, slug: c.slug }))\n);\n\nreturn [{\n  json: {\n    ...prevData,\n    categoriesJson\n  }\n}];"
+      },
+      "id": "8",
+      "name": "Merge Categories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "HTTP-Referer",
+              "value": "https://n8n.io"
+            },
+            {
+              "name": "X-Title",
+              "value": "n8n AutoPost"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"anthropic/claude-3.5-sonnet\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an expert SEO content writer. Write high-quality, engaging blog posts in proper HTML format. Always include the target keyword naturally. Place internal links where they are contextually relevant. Return ONLY a valid JSON object, no markdown, no code blocks.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a complete SEO-optimized blog post with the following requirements:\\n\\nTitle: {{ $json.title }}\\nMain Keyword: {{ $json.keyword }}\\nTarget Link to place on keyword: {{ $json.targetLink }}\\n\\nAvailable Internal Links from the site (use 2-3 where relevant):\\n{{ $json.internalLinksJson }}\\n\\nAvailable Categories (pick the SINGLE most relevant one):\\n{{ $json.categoriesJson }}\\n\\nINSTRUCTIONS:\\n1. Write a full blog post (800-1200 words) in HTML format (use <h2>, <h3>, <p>, <ul>, <li> tags)\\n2. Place the target link on the exact keyword '{{ $json.keyword }}' — format: <a href='{{ $json.targetLink }}'>{{ $json.keyword }}</a>\\n3. Add 2-3 relevant internal links from the provided list, placed naturally in the content\\n4. Select exactly ONE category ID from the categories list that best fits this content\\n5. Generate a compelling meta description (150-160 characters)\\n\\nReturn a JSON object with this exact structure:\\n{\\\"title\\\": \\\"final post title\\\", \\\"content\\\": \\\"full HTML content\\\", \\\"category_id\\\": 123, \\\"meta_description\\\": \\\"...\\\", \\\"slug\\\": \\\"url-friendly-slug\\\"}\"\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 4000\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "9",
+      "name": "OpenRouter AI - Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_OPENROUTER_CRED_ID",
+          "name": "OpenRouter API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and extract the JSON content\nconst aiResponse = $input.item.json;\nconst prevData = $('Merge Categories').item.json;\n\ntry {\n  // Get the message content from OpenRouter response\n  const messageContent = aiResponse.choices[0].message.content;\n  \n  // Parse the JSON from AI response\n  // Remove markdown code blocks if present\n  const cleanJson = messageContent\n    .replace(/```json\\n?/g, '')\n    .replace(/```\\n?/g, '')\n    .trim();\n  \n  const parsedContent = JSON.parse(cleanJson);\n  \n  return [{\n    json: {\n      title: parsedContent.title || prevData.title,\n      content: parsedContent.content,\n      category_id: parsedContent.category_id,\n      meta_description: parsedContent.meta_description,\n      slug: parsedContent.slug,\n      publishingSite: prevData.publishingSite,\n      rowIndex: prevData.rowIndex,\n      status: 'ready'\n    }\n  }];\n} catch(e) {\n  return [{\n    json: {\n      error: 'AI response parse failed: ' + e.message,\n      rawResponse: aiResponse.choices[0]?.message?.content,\n      publishingSite: prevData.publishingSite,\n      rowIndex: prevData.rowIndex,\n      status: 'error'\n    }\n  }];\n}"
+      },
+      "id": "10",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "error",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "11",
+      "name": "Check No Error",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [2440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.publishingSite }}/wp-json/wp/v2/posts",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $json.title }}\",\n  \"content\": {{ JSON.stringify($json.content) }},\n  \"status\": \"publish\",\n  \"categories\": [{{ $json.category_id }}],\n  \"slug\": \"{{ $json.slug }}\",\n  \"meta\": {\n    \"_yoast_wpseo_metadesc\": \"{{ $json.meta_description }}\"\n  }\n}",
+        "options": {}
+      },
+      "id": "12",
+      "name": "Publish to WordPress",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2660, 300],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "YOUR_WP_CRED_ID",
+          "name": "WordPress Basic Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare success status update for Google Sheet\nconst wpResponse = $input.item.json;\nconst prevData = $('Parse AI Response').item.json;\n\nreturn [{\n  json: {\n    rowIndex: prevData.rowIndex,\n    publishedUrl: wpResponse.link,\n    wpPostId: wpResponse.id,\n    status: 'Done',\n    publishedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "13",
+      "name": "Prepare Sheet Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.rowIndex }}",
+            "Status": "Done",
+            "Published URL": "={{ $json.publishedUrl }}",
+            "WP Post ID": "={{ $json.wpPostId }}",
+            "Published At": "={{ $json.publishedAt }}"
+          },
+          "matchingColumns": ["row_number"]
+        },
+        "options": {}
+      },
+      "id": "14",
+      "name": "Update Sheet - Mark Done",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [3100, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CRED_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Read Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter - Skip Done Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter - Skip Done Rows": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Fetch Existing WP Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Existing WP Posts": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Input": {
+      "main": [
+        [
+          {
+            "node": "Fetch WP Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch WP Categories": {
+      "main": [
+        [
+          {
+            "node": "Merge Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Categories": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter AI - Generate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter AI - Generate Content": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Check No Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check No Error": {
+      "main": [
+        [
+          {
+            "node": "Publish to WordPress",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish to WordPress": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Update": {
+      "main": [
+        [
+          {
+            "node": "Update Sheet - Mark Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["SEO", "WordPress", "AutoPost"],
+  "pinData": {}
+}
