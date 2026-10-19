@@ -1,0 +1,784 @@
+{
+  "name": "speed to lead",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "speedtoLead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        -432,
+        0
+      ],
+      "id": "ee183d69-3da5-4da0-a010-f4ac3c0e242d",
+      "name": "Lead Intake",
+      "webhookId": "1a02ec6e-f2d3-48af-a109-061d190d91ea"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "278b4f8e-cf97-444e-8cde-656d80ada008",
+              "name": "cfg_agent_name",
+              "value": "Shakil Parvez",
+              "type": "string"
+            },
+            {
+              "id": "563f7a90-f7d6-40d5-a8c4-7af94102abd4",
+              "name": "cfg_business_name",
+              "value": "Shakil Parvez",
+              "type": "string"
+            },
+            {
+              "id": "36896bfe-6047-4df4-ac3e-1d37f4aeedab",
+              "name": "cfg_agent_email",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a93be045-f747-4eda-9f44-025bd3734b72",
+              "name": "cfg_from_email",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "befba837-818e-4f62-bac6-ba10212341c1",
+              "name": "cfg_booking_link",
+              "value": "NULL",
+              "type": "string"
+            },
+            {
+              "id": "029483e5-aaa9-4f50-8c63-9f7b9229bc79",
+              "name": "cfg_telegram_chat_id",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "59193b19-4b73-43cc-b6e0-fe4c1e4e5e25",
+              "name": "cfg_timezone",
+              "value": "America/New_York",
+              "type": "string"
+            },
+            {
+              "id": "d8b70d54-9d05-4ec0-b831-da827bea6a94",
+              "name": "cfg_dedupe_minutes",
+              "value": "10",
+              "type": "string"
+            },
+            {
+              "id": "8fcbb478-a44d-41ac-8546-366e137e38d0",
+              "name": "cfg_twilio_from",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -304,
+        0
+      ],
+      "id": "4f52aa68-ec6a-44f1-a54a-485ff5502c3d",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst query = item.query || {};\nconst rawBody = item.body && typeof item.body === 'object' ? item.body : {};\n\n// Supports both a flat body and a nested \"lead\" object\nconst body = rawBody.lead && typeof rawBody.lead === 'object' ? { ...rawBody, ...rawBody.lead } : rawBody;\n\nconst str = (v) => {\n  if (v === undefined || v === null) return '';\n  if (typeof v === 'object') return ''; // Prevents [object Object] issue safely\n  return String(v).replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, '').trim();\n};\nconst pick = (...keys) => { for (const k of keys) { const v = str(body[k]); if (v) return v; } return ''; };\n\n// Escape text for Telegram HTML parse mode\nconst esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\n// ---- Authentication ----\n// Configure a unique secret before enabling authentication.\nconst REQUIRE_AUTH = false;\nconst WEBHOOK_SECRET = '';\nconst givenSecret = str(headers['x-webhook-secret'] || query.secret);\nconst authorized = REQUIRE_AUTH ? Boolean(WEBHOOK_SECRET) && givenSecret === WEBHOOK_SECRET : true;\n\n// ---- Normalize fields ----\nconst first = pick('first_name', 'firstName', 'firstname');\nconst last = pick('last_name', 'lastName', 'lastname');\nconst rawName = pick('full_name', 'fullName', 'name') || [first, last].filter(Boolean).join(' ');\nconst name = (typeof rawName === 'string' && rawName.trim() ? rawName : 'Unknown').slice(0, 120);\n\nconst emailCandidate = pick('email', 'email_address', 'emailAddress').toLowerCase();\nconst emailOk = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(emailCandidate) && emailCandidate.length <= 254;\nconst email = emailOk ? emailCandidate : '';\n\nconst rawPhone = pick('phone', 'phone_number', 'phoneNumber', 'mobile', 'cell');\nconst digits = rawPhone.replace(/[^\\d]/g, '');\nlet phoneCandidate = '';\nif (rawPhone.startsWith('+')) phoneCandidate = '+' + digits;\nelse if (digits.length === 10) phoneCandidate = '+1' + digits;\nelse if (digits.length === 11 && digits.startsWith('1')) phoneCandidate = '+' + digits;\nconst phoneOk = /^\\+[1-9]\\d{7,14}$/.test(phoneCandidate);\nconst phone = phoneOk ? phoneCandidate : '';\n\nconst consentRaw = str(body.sms_consent ?? body.smsConsent ?? body.consent).toLowerCase();\nconst smsConsent = ['true', 'yes', 'y', '1', 'on', 'agree', 'agreed'].includes(consentRaw);\n\nconst source = (pick('source', 'lead_source', 'utm_source', 'platform') || 'unknown').slice(0, 60);\nconst propertyInterest = pick('property', 'listing', 'address', 'property_address').slice(0, 200);\nconst message = pick('message', 'comments', 'comment', 'notes', 'inquiry', 'question').slice(0, 1000);\n\n// ---- Validity: at least one working contact method ----\nconst valid = emailOk || phoneOk;\nconst leadKey = email || phone;\nconst hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };\nconst leadId = leadKey ? 'L-' + hash(leadKey) : '';\n\n// ---- Timestamps ----\nconst now = new Date();\nlet receivedLocal = now.toISOString();\ntry {\n  receivedLocal = now.toLocaleString('en-US', { timeZone: item.cfg_timezone || 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });\n} catch (e) {}\n\n// ---- De-duplicate repeated submits inside a short window ----\nlet duplicate = false;\nif (authorized && valid) {\n  const store = $getWorkflowStaticData('global');\n  store.recent = store.recent || {};\n  const windowMs = (Number(item.cfg_dedupe_minutes) || 10) * 60000;\n  const t = now.getTime();\n  for (const k of Object.keys(store.recent)) { if (t - store.recent[k] > windowMs) delete store.recent[k]; }\n  if (store.recent[leadKey]) duplicate = true; else store.recent[leadKey] = t;\n}\n\n// ---- Decision ----\nlet reject = false, httpStatus = 200, rejectReason = '', status = 'accepted';\nif (!authorized) { reject = true; httpStatus = 401; rejectReason = 'unauthorized'; status = 'rejected'; }\nelse if (!valid) { reject = true; httpStatus = 400; rejectReason = 'invalid_data'; status = 'rejected'; }\nelse if (duplicate) { status = 'duplicate_ignored'; }\n\n// Carry config forward\nconst cfgOut = {};\nfor (const [k, v] of Object.entries(item)) { if (k.startsWith('cfg_')) cfgOut[k] = v; }\n\nconst rawPayload = rejectReason === 'invalid_data' ? JSON.stringify(rawBody).slice(0, 800) : '';\n\nreturn [{\n  json: {\n    ...cfgOut,\n    reject, http_status: httpStatus, reject_reason: rejectReason, status,\n    process: !reject && !duplicate,\n    lead_id: leadId, name,\n    first_name: name.split(/\\s+/)[0] || 'there',\n    email, phone, has_email: !!email,\n    sms_consent: smsConsent, sms_allowed: !!phone && smsConsent,\n    source, property_interest: propertyInterest, message,\n    received_at_iso: now.toISOString(), received_at_local: receivedLocal,\n    raw_payload: rawPayload,\n    // HTML-safe copies for Telegram messages\n    h_name: esc(name), h_email: esc(email), h_phone: esc(phone), h_source: esc(source),\n    h_property: esc(propertyInterest), h_message: esc(message), h_raw: esc(rawPayload)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        0
+      ],
+      "id": "08995bce-4c2f-4e36-96d2-c391b8aa0746",
+      "name": "Normalize & Validate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e06bd482-dda5-477f-bee6-2f8102d2dcd9",
+              "leftValue": "={{ $json.reject }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -48,
+        0
+      ],
+      "id": "25f07a7b-1044-4138-b53f-b78e505bde83",
+      "name": "Rejected?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: \"rejected\", reason: $json.reject_reason }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_status }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        160,
+        -128
+      ],
+      "id": "93221f54-9a37-4fcb-b02b-ae66f348bac8",
+      "name": "Respond Rejected"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: $json.status, lead_id: $json.lead_id }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        80,
+        304
+      ],
+      "id": "81859786-241b-4aed-8296-a0bf47d7441b",
+      "name": "Respond Accepted"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a11e54fb-dc0e-4817-96ae-c7cc2366bf04",
+              "leftValue": "={{ $json.process }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        304
+      ],
+      "id": "60ee1389-cb88-43ed-8392-02333c8c55cb",
+      "name": "New Lead?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1c8e3b24-04b2-4f0d-b283-cf2b1e7f26ab",
+              "leftValue": "={{ $json.has_email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        432,
+        208
+      ],
+      "id": "4b1e35ad-9eb1-4b78-b5a0-d5c343c251de",
+      "name": "Has Email?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1c94214e-393c-4a9e-b57d-ae59d9ba2484",
+              "leftValue": "={{ $json.sms_allowed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        368
+      ],
+      "id": "92d8acb9-5b89-45d8-8e52-09eac14c936d",
+      "name": "SMS Allowed?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Normalize & Validate').first().json.cfg_telegram_chat_id }}",
+        "text": "=⚠️ AUTO-REPLY FAILED for {{ $('Normalize & Validate').first().json.h_name || 'Unknown' }} ({{ $('Normalize & Validate').first().json.h_email || 'no email' }} / {{ $('Normalize & Validate').first().json.h_phone || 'no phone' }}).\nPlease contact this lead manually now.\nError: {{ String($json.error?.message || (typeof $json.error === 'string' ? $json.error : 'see execution log')).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        896,
+        368
+      ],
+      "id": "12a9289c-f782-4303-b339-5dc138f9e000",
+      "name": "Telegram Reply Failure",
+      "webhookId": "e63a51f1-6b52-48cc-b665-7664da3b809b",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d00a4063-5fcd-43ad-94bd-5cc4c65cfe67",
+              "leftValue": "={{ $json.reject_reason }}",
+              "rightValue": "invalid_data",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        400,
+        -128
+      ],
+      "id": "cda7e51c-9183-41e4-bd5e-9aa9558f95e2",
+      "name": "Invalid Data?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.cfg_telegram_chat_id }}",
+        "text": "=⚠️ LEAD REJECTED (invalid contact data)\nSource: {{ $json.h_source }}\nTime: {{ $json.received_at_local }}\nRaw payload (first 800 chars):\n{{ $json.h_raw }}\n\nPlease check the form / lead source.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        -144
+      ],
+      "id": "d383dbb2-e692-4c9f-8b2d-c390390b3042",
+      "name": "Telegram Invalid Lead Alert",
+      "webhookId": "35ba6e20-8e63-4b33-b805-4715ffb39ad0"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.cfg_telegram_chat_id }}",
+        "text": "=🔔 NEW LEAD — {{ $json.h_source }}\n👤 {{ $json.h_name || 'Unknown' }}\n📞 {{ $json.h_phone || 'n/a' }}\n✉️ {{ $json.h_email || 'n/a' }}\n🏠 {{ $json.h_property || 'n/a' }}\n💬 {{ $json.h_message || '(no message)' }}\n🕒 {{ $json.received_at_local }}\n\n➡️ Contact within 5 minutes.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        416,
+        32
+      ],
+      "id": "1c6da78d-fede-4ab4-81b7-5e8f024127a6",
+      "name": "Telegram Alert Agent",
+      "webhookId": "196795b3-5f14-4dee-978b-18d3a8e2dbbe",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "notesInFlow": true,
+      "executeOnce": false,
+      "alwaysOutputData": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Normalize & Validate').first().json.cfg_agent_email }}",
+        "subject": "=NEW LEAD (Telegram failed): {{ $('Normalize & Validate').first().json.name || 'Unknown' }}",
+        "emailType": "text",
+        "message": "=Telegram alert failed, so here is the lead by email.  Name: {{ $('Normalize & Validate').first().json.name || 'Unknown' }} Phone: {{ $('Normalize & Validate').first().json.phone || 'n/a' }} Email: {{ $('Normalize & Validate').first().json.email || 'n/a' }} Source: {{ $('Normalize & Validate').first().json.source }} Property: {{ $('Normalize & Validate').first().json.property_interest || 'n/a' }} Message: {{ $('Normalize & Validate').first().json.message || '(none)' }} Received: {{ $('Normalize & Validate').first().json.received_at_local }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        48
+      ],
+      "id": "1808cbea-d758-4b5b-9ff0-23bc5a44f5c1",
+      "name": "Fallback Alert Email",
+      "webhookId": "ca59d7e6-3a0b-4233-afdd-0469cf5b081e"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Thanks for your inquiry — {{ $json.cfg_business_name }}",
+        "emailType": "text",
+        "message": "=Hi {{ $json.first_name }},  Thanks for your inquiry with {{ $json.cfg_business_name }}. This is an automated confirmation that we received your message{{ $json.property_interest ? ' about ' + $json.property_interest : '' }}.  {{ $json.cfg_agent_name }} has been notified and will contact you personally very soon.  If you would like to pick a time that suits you, you can book here: {{ $json.cfg_booking_link }}  If you did not make this request, just reply to this email and we will remove your details.  {{ $json.cfg_agent_name }} {{ $json.cfg_business_name }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        816,
+        192
+      ],
+      "id": "24157a4c-91b3-4ed4-b9b7-40ed2cd9719a",
+      "name": "Send Auto-Reply Email",
+      "webhookId": "e2c32387-07bf-48a4-a75e-bb10d85e28e1"
+    },
+    {
+      "parameters": {
+        "to": "={{ $json.phone }}",
+        "message": "=Hi {{ $json.first_name }}, thanks for your inquiry with {{ $json.cfg_business_name }}. {{ $json.cfg_agent_name }} will contact you shortly. Reply STOP to opt out.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        656,
+        352
+      ],
+      "id": "b4ca17c9-4bab-4252-9f09-5077cb25df32",
+      "name": "Send SMS",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "disabled": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Normalize & Validate').first().json.cfg_telegram_chat_id }}",
+        "text": "=⚠️ CRM SAVE FAILED. Lead is NOT in the sheet:\n{{ $('Normalize & Validate').first().json.h_name || 'Unknown' }} | {{ $('Normalize & Validate').first().json.h_phone || 'n/a' }} | {{ $('Normalize & Validate').first().json.h_email || 'n/a' }}\nSource: {{ $('Normalize & Validate').first().json.h_source }}\nMessage: {{ $('Normalize & Validate').first().json.h_message || '(none)' }}\nError: {{ String($json.error?.message || (typeof $json.error === 'string' ? $json.error : 'see execution log')).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        544
+      ],
+      "id": "722740f2-d297-4ca9-9da9-c89483353266",
+      "name": "Telegram CRM Failure",
+      "webhookId": "ad67eb35-04d3-4de0-82af-a81b49bc9000"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": "Real Esate speed to lead",
+          "cachedResultUrl": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.lead_id }}",
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "phone": "={{ $json.phone }}",
+            "source": "={{ $json.source }}",
+            "property_interest": "={{ $json.property_interest }}",
+            "message": "={{ $json.message }}",
+            "sms_consent": "={{ $json.sms_consent }}",
+            "received_at": "={{ $json.received_at_iso }}",
+            "status": "New"
+          },
+          "matchingColumns": [
+            "lead_id"
+          ],
+          "schema": [
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "property_interest",
+              "displayName": "property_interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sms_consent",
+              "displayName": "sms_consent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "USER_ENTERED"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        464,
+        528
+      ],
+      "id": "ebb93f46-c2fd-4f47-b496-8834324be70c",
+      "name": "Save to CRM",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Lead Intake": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Normalize & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize & Validate": {
+      "main": [
+        [
+          {
+            "node": "Rejected?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejected?": {
+      "main": [
+        [
+          {
+            "node": "Respond Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Accepted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Rejected": {
+      "main": [
+        [
+          {
+            "node": "Invalid Data?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond Accepted": {
+      "main": [
+        [
+          {
+            "node": "New Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Lead?": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Has Email?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SMS Allowed?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save to CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Has Email?": {
+      "main": [
+        [
+          {
+            "node": "Send Auto-Reply Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Send SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invalid Data?": {
+      "main": [
+        [
+          {
+            "node": "Telegram Invalid Lead Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Alert Agent": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Fallback Alert Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Telegram Reply Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to CRM": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Telegram CRM Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "w3ErgM6x3YGjEVF0",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "84366882-ade3-4fa4-b97f-bbe5d0d603ae",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "id": "3CXSKAvmkz1NMiRC",
+  "tags": []
+}

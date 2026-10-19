@@ -1,0 +1,61 @@
+{
+  "name": "Lead Workflows – Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "35829771-459a-4459-a4db-20a5577af963",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "chatId": "",
+        "text": "=🚨 n8n WORKFLOW ERROR Workflow: {{ $json.workflow?.name || 'unknown' }} Failed node: {{ $json.execution?.lastNodeExecuted || 'unknown' }} Error: {{ String($json.execution?.error?.message || 'unknown').slice(0, 500) }} Mode: {{ $json.execution?.mode || 'n/a' }} Execution: {{ $json.execution?.url || 'n/a' }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "7ac0a8dd-802d-4f3c-9004-0d8a9df6e92d",
+      "name": "Send a text message",
+      "webhookId": "24b9dcb3-6e8d-454f-99c9-f1af196a7b1d"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "0ff873ad-d67a-4c24-af57-d6406a3912a4",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "nodeGroups": [],
+  "id": "w3ErgM6x3YGjEVF0",
+  "tags": []
+}
