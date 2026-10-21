@@ -1,0 +1,771 @@
+{
+  "name": "whatsapp",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "id": "8517f7bb-28f0-4b8a-bba1-674b39963c6e",
+      "name": "WhatsApp Trigger",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1584,
+        -208
+      ],
+      "webhookId": "95b148a1-2593-41ca-b293-b2ec34ca2bf2"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "0052d059-228d-4b66-85e3-c0e1d97b1b40",
+                    "leftValue": "={{ $json.messages[0].type }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Image"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.messages[0].type }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "eb5379e7-e685-47e7-b673-2b19743390c0"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d5293393-d6a2-43f4-aff5-953464c9c18d",
+                    "leftValue": "={{ $json.messages[0].type }}",
+                    "rightValue": "audio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Voice"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ba12b426-8141-47a3-956c-feacbaebd326",
+      "name": "Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1408,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.clean_message }}",
+        "options": {
+          "systemMessage": "=You are a friendly, professional, and smart sales assistant for a premium football jersey store in Bangladesh.\n\nLANGUAGE & TONE RULE:\n- Reply in a natural mix of Bangla, Banglish, and English, matching the customer's typing style.\n- Keep the tone warm, respectful, and concise. Use \"আপনি\" or friendly terms like \"ভাই/আপু\".\n\nCONVERSATION FLOW RULES:\n1. Information Phase: When answering product queries (price, size, quality, delivery), ALWAYS end your reply with a short, engaging follow-up question to keep the conversation going (e.g., \"আপনি কি নিজের জন্য নিচ্ছেন নাকি গিফট হিসেবে?\", \"আপনার প্রিয় টিম কোনটা?\").\n2. Order Trigger: If the customer shows buying intent (e.g., \"কিনবো\", \"দাও\", \"অর্ডার করতে চাই\") OR if they have asked enough questions and seem ready, IMMEDIATELY send the Professional Order Form (provided below). Do not ask \"Do you want to order?\", just send the form.\n3. Form Parsing: When the customer sends the filled form, extract the details. If any critical field (Name, Phone, Address, Size, Team) is missing, politely ask for that specific missing field.\n4. Confirmation Phase: Once all details are collected, summarize the order briefly and ask EXACTLY: \"স্যার, সব তথ্য কি ঠিক আছে? অর্ডারটি কনফার্ম করবো?\"\n5. Finalization: If the customer gives a green signal (Yes, হ্যাঁ, Confirm, OK), output a clean JSON format for the Google Sheets node. DO NOT ask for advance payment. State clearly that it is Full Cash on Delivery (COD).\n6. Post-Order: After outputting the JSON, immediately send this exact professional message: \"✅ আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে! আমাদের প্রতিনিধি শীঘ্রই আপনার নম্বরে কল করবেন। ধন্যবাদ!\"\n7. Fallback: If a query is completely outside the knowledge base, reply: \"দুঃখিত, আমি এই বিষয়ে নিশ্চিত নই। আমি আমাদের ম্যানেজারকে বিষয়টি জানিয়ে দিচ্ছি।\" AND trigger the Telegram fallback node.\n\nPROFESSIONAL ORDER FORM TEMPLATE:\n📝 *অর্ডার ফর্ম*\n-------------------------\n👤 নাম:\n📱 ফোন নম্বর:\n📍 ঠিকানা (বাসা/রোড):\n🏙️ থানা:\n🗺️ জেলা:\n👕 সাইজ (M/L/XL/XXL):\n⚽ টিমের নাম:\n🔢 পরিমাণ:\n✏️ কাস্টম নাম (যদি লাগে):\n🔢 জার্সি নম্বর (যদি লাগে):\n-------------------------\n\nCRITICAL OUTPUT RULE: When outputting the order data, output ONLY the raw JSON object. Do NOT use markdown formatting, do NOT use backticks (```), and do NOT add any conversational text before or after the JSON. Just the raw JSON.\nWhen chatting normally, reply only with natural text.\nBUT, when the customer confirms the order and you have all details, you MUST start your reply with exactly ORDER_READY: followed immediately by the raw JSON data.\nExample: ORDER_READY: {\"নাম\": \"Parvez\", \"ফোন_নম্বর\": \"017...\", ...}\nDo not add any other text after the JSON."
+        }
+      },
+      "id": "e8539bcf-045c-4cff-b053-8433d1c4db58",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -576,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "claude-sonnet-5",
+          "mode": "list",
+          "cachedResultName": "Claude Sonnet 5"
+        },
+        "options": {}
+      },
+      "id": "bb9c7a61-5dba-4a0b-80aa-6abdaa927d93",
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.6,
+      "position": [
+        -672,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('WhatsApp Trigger').item.json.contacts[0].wa_id }}",
+        "contextWindowLength": 20
+      },
+      "id": "e519ae68-5adf-4e0d-b5ca-57acd8db5956",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        -496,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=YOUR_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "YOUR_RECIPIENT_PHONE_NUMBER",
+        "textBody": "={{ $json.output }}",
+        "additionalFields": {}
+      },
+      "id": "e9761723-af3b-4752-b4d3-1323dada38de",
+      "name": "Send message",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        -48
+      ],
+      "webhookId": "6f21d6cc-d802-4a37-a5b8-e05f82fb3b1f"
+    },
+    {
+      "parameters": {
+        "resource": "media",
+        "operation": "mediaUrlGet",
+        "mediaGetId": "={{ $json.messages[0].audio.id }}"
+      },
+      "id": "e7ca1256-b08b-4eea-9e38-fa39290b815d",
+      "name": "Get Audio URL",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        -1216,
+        -64
+      ],
+      "webhookId": "71251a5d-973b-4a20-bb86-761381727eb9"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "inputType": "base64",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -880,
+        -336
+      ],
+      "id": "1ed400f0-697b-4c66-8036-23e4503f350a",
+      "name": "Analyze image"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -880,
+        -64
+      ],
+      "id": "d013cc15-696e-4809-b00e-22141ebe91bf",
+      "name": "Transcribe a recording"
+    },
+    {
+      "parameters": {
+        "resource": "media",
+        "operation": "mediaUrlGet",
+        "mediaGetId": "={{ $json.messages[0].image.id }}"
+      },
+      "id": "cb3a4f10-33ef-4780-80a6-ae85c7ca6cb1",
+      "name": "Get Image url",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        -1216,
+        -336
+      ],
+      "webhookId": "6bb10ca7-64b3-4b56-bb5d-1b76bab49056"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "4c0890b6-9a14-468e-82b8-f06514ca6952",
+      "name": "Image Process",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -1056,
+        -336
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "whatsAppApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "afa7ff31-3da5-4259-8d6b-af24b5beceec",
+      "name": "Voice Process",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -1056,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ec5e00d1-d476-4f55-8dd8-68d61635f658",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "ORDER_READY:",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -304,
+        -208
+      ],
+      "id": "e712f112-b2aa-4153-a2cf-8725cde86751",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "F_Com",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 556203252,
+          "mode": "list",
+          "cachedResultName": "Order",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=556203252"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Customer name": "={{ $json['নাম'] }}",
+            "Phone Number ": "={{ $json['ফোন_নম্বর'] }}",
+            "Delivery Address ": "={{ $json['ঠিকানা'] }}",
+            "Thana": "={{ $json['থানা'] }}",
+            "Quantity": "={{ $json['পরিমাণ'] }}",
+            "Custom Name": "={{ $json['কাস্টম_নাম'] }}",
+            "Jersey Number": "={{ $json['জার্সি_নম্বর'] }}",
+            "Team": "={{ $json['টিমের_নাম'] }}",
+            "Size": "={{ $json['সাইজ'] }}",
+            "District": "={{ $json['জেলা'] }}",
+            "Time": "={{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Customer name",
+              "displayName": "Customer name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone Number ",
+              "displayName": "Phone Number ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Delivery Address ",
+              "displayName": "Delivery Address ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Thana",
+              "displayName": "Thana",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "District",
+              "displayName": "District",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Size",
+              "displayName": "Size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Team",
+              "displayName": "Team",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Jersey Number",
+              "displayName": "Jersey Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Custom Name",
+              "displayName": "Custom Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Quantity",
+              "displayName": "Quantity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Time",
+              "displayName": "Time",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        48,
+        -336
+      ],
+      "id": "5519499b-8c7d-49fd-a571-9b1da8d2933c",
+      "name": "Add order"
+    },
+    {
+      "parameters": {
+        "jsCode": "// AI-এর আউটপুট ভেরিয়েবল নেওয়া\nlet aiOutput = $input.first().json.output;\n\ntry {\n  // টেক্সটের ভেতর থেকে শুধুমাত্র প্রথম { থেকে শেষ } পর্যন্ত JSON অংশটুকু এক্সট্রাক্ট করা\n  const jsonMatch = aiOutput.match(/\\{[\\s\\S]*\\}/);\n  \n  if (!jsonMatch) {\n    throw new Error(\"No JSON found in output\");\n  }\n\n  // এক্সট্রাক্ট করা স্ট্রিংকে JSON অবজেক্টে রূপান্তর করা\n  const parsedData = JSON.parse(jsonMatch[0]);\n\n  // সফলভাবে পার্স হলে Google Sheets-এর জন্য ডেটা রিটার্ন করা\n  return [{ json: parsedData }];\n  \n} catch (error) {\n  // যদি কোনো কারণে ফেইল করে, এরর লগ রিটার্ন করা যাতে ওয়ার্কফ্লো ক্র্যাশ না করে\n  return [{ json: { error: \"JSON Parse Failed\", raw_data: aiOutput } }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -336
+      ],
+      "id": "ed41df18-f3d3-4c24-beac-a692a500a2de",
+      "name": "Simplify"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=YOUR_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "YOUR_RECIPIENT_PHONE_NUMBER",
+        "textBody": "=✅ আপনার অর্ডারটি সফলভাবে কনফার্ম হয়েছে! আমাদের প্রতিনিধি শীঘ্রই আপনার নম্বরে কল করবেন। ধন্যবাদ!",
+        "additionalFields": {}
+      },
+      "id": "cafcd506-4944-4cc8-a088-8d3874be9c5c",
+      "name": "Order Confirm Message",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        -336
+      ],
+      "webhookId": "6f21d6cc-d802-4a37-a5b8-e05f82fb3b1f"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "F_Com",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Info",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "b669b687-927e-42ef-b232-1704b43ba5e3",
+      "name": "Knowladge Base",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        -304,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ddf9a420-3f93-4801-b966-16a10b31bfe1",
+              "name": "clean_message",
+              "value": "={{ $json.messages?.[0]?.text?.body ?? $json['0']?.content?.[0]?.text ?? $('Transcribe a recording').item?.json?.text ?? \"দুঃখিত, মেসেজের কন্টেন্ট পড়া যায়নি।\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -720,
+        -208
+      ],
+      "id": "03e2c493-158b-41dc-adb8-c14c9d9d854c",
+      "name": "Decode Message"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Get Image url",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Decode Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Audio URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Audio URL": {
+      "main": [
+        [
+          {
+            "node": "Voice Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze image": {
+      "main": [
+        [
+          {
+            "node": "Decode Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe a recording": {
+      "main": [
+        [
+          {
+            "node": "Decode Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Image url": {
+      "main": [
+        [
+          {
+            "node": "Image Process",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image Process": {
+      "main": [
+        [
+          {
+            "node": "Analyze image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice Process": {
+      "main": [
+        [
+          {
+            "node": "Transcribe a recording",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Simplify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add order": {
+      "main": [
+        [
+          {
+            "node": "Order Confirm Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simplify": {
+      "main": [
+        [
+          {
+            "node": "Add order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowladge Base": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decode Message": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true
+  },
+  "versionId": "9a6dc709-e75b-4296-8381-a6fd851d3754",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4a6a690e724c9b6993f455e30c4caeba89171422ed0237a376a8c2074a7c3890"
+  },
+  "nodeGroups": [],
+  "id": "SSow7jOCEYGh193z",
+  "tags": []
+}
